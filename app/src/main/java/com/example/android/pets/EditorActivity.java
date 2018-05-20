@@ -17,6 +17,7 @@ package com.example.android.pets;
 
 import android.content.ContentValues;
 import android.database.sqlite.SQLiteDatabase;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.app.NavUtils;
 import android.support.v7.app.AppCompatActivity;
@@ -51,10 +52,11 @@ public class EditorActivity extends AppCompatActivity {
     private Spinner mGenderSpinner;
 
     /**
-     * Gender of the pet. The possible values are:
-     * 0 for unknown gender, 1 for male, 2 for female.
+     * Gender of the pet. The possible valid values are in the PetContract.java file:
+     * {@link PetEntry#GENDER_UNKNOWN}, {@link PetEntry#GENDER_MALE}, or
+     * {@link PetEntry#GENDER_FEMALE}.
      */
-    private int mGender = 0;
+    private int mGender = PetEntry.GENDER_UNKNOWN;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,59 +72,78 @@ public class EditorActivity extends AppCompatActivity {
         setupSpinner();
     }
 
-    private long insertPet(){
-        PetDbHelper mDbHelper = new PetDbHelper(this);
-        SQLiteDatabase db = mDbHelper.getWritableDatabase();
+    /**
+     * Get user input from editor and save new pet into database.
+     */
+    private void insertPet() {
+        // Read from input fields
+        // Use trim to eliminate leading or trailing white space
+        String nameString = mNameEditText.getText().toString().trim();
+        String breedString = mBreedEditText.getText().toString().trim();
+        String weightString = mWeightEditText.getText().toString().trim();
+        int weight = Integer.parseInt(weightString);
+
+        // Create a ContentValues object where column names are the keys,
+        // and pet attributes from the editor are the values.
         ContentValues values = new ContentValues();
-
-        values.put(PetEntry.COLUMN_PET_NAME, mNameEditText.getText().toString().trim());
-        values.put(PetEntry.COLUMN_PET_BREED, mBreedEditText.getText().toString().trim());
+        values.put(PetEntry.COLUMN_PET_NAME, nameString);
+        values.put(PetEntry.COLUMN_PET_BREED, breedString);
         values.put(PetEntry.COLUMN_PET_GENDER, mGender);
-        values.put(PetEntry.COLUMN_PET_WEIGHT, Integer.parseInt(mWeightEditText.getText().toString()));
+        values.put(PetEntry.COLUMN_PET_WEIGHT, weight);
 
-        return db.insert(PetEntry.TABLE_NAME, null, values);
+        // Insert a new pet into the provider, returning the content URI for the new pet.
+        Uri newUri = getContentResolver().insert(PetEntry.CONTENT_URI, values);
 
-
+        // Show a toast message depending on whether or not the insertion was successful
+        if (newUri == null) {
+            // If the new content URI is null, then there was an error with insertion.
+            Toast.makeText(this, getString(R.string.editor_insert_pet_failed),
+                    Toast.LENGTH_SHORT).show();
+        } else {
+            // Otherwise, the insertion was successful and we can display a toast.
+            Toast.makeText(this, getString(R.string.editor_insert_pet_successful),
+                    Toast.LENGTH_SHORT).show();
+        }
     }
 
-    /**
-     * Setup the dropdown spinner that allows the user to select the gender of the pet.
-     */
-    private void setupSpinner() {
-        // Create adapter for spinner. The list options are from the String array it will use
-        // the spinner will use the default layout
-        ArrayAdapter genderSpinnerAdapter = ArrayAdapter.createFromResource(this,
-                R.array.array_gender_options, android.R.layout.simple_spinner_item);
+        /**
+         * Setup the dropdown spinner that allows the user to select the gender of the pet.
+         */
+        private void setupSpinner() {
+            // Create adapter for spinner. The list options are from the String array it will use
+            // the spinner will use the default layout
+            ArrayAdapter genderSpinnerAdapter = ArrayAdapter.createFromResource(this,
+                    R.array.array_gender_options, android.R.layout.simple_spinner_item);
 
-        // Specify dropdown layout style - simple list view with 1 item per line
-        genderSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_dropdown_item_1line);
+            // Specify dropdown layout style - simple list view with 1 item per line
+            genderSpinnerAdapter.setDropDownViewResource(android.R.layout.simple_dropdown_item_1line);
 
-        // Apply the adapter to the spinner
-        mGenderSpinner.setAdapter(genderSpinnerAdapter);
+            // Apply the adapter to the spinner
+            mGenderSpinner.setAdapter(genderSpinnerAdapter);
 
-        // Set the integer mSelected to the constant values
-        mGenderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                String selection = (String) parent.getItemAtPosition(position);
-                if (!TextUtils.isEmpty(selection)) {
-                    if (selection.equals(getString(R.string.gender_male))) {
-                        mGender = PetEntry.GENDER_MALE; // Male
-                    } else if (selection.equals(getString(R.string.gender_female))) {
-                        mGender = PetEntry.GENDER_FEMALE; // Female
-                    } else {
-                        mGender = PetEntry.GENDER_UNKNOWN; // Unknown
+            // Set the integer mSelected to the constant values
+            mGenderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    String selection = (String) parent.getItemAtPosition(position);
+                    if (!TextUtils.isEmpty(selection)) {
+                        if (selection.equals(getString(R.string.gender_male))) {
+                            mGender = PetEntry.GENDER_MALE;
+                        } else if (selection.equals(getString(R.string.gender_female))) {
+                            mGender = PetEntry.GENDER_FEMALE;
+                        } else {
+                            mGender = PetEntry.GENDER_UNKNOWN;
+                        }
                     }
                 }
-            }
 
-            // Because AdapterView is an abstract class, onNothingSelected must be defined
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-                mGender = 0; // Unknown
-            }
-        });
-    }
+                // Because AdapterView is an abstract class, onNothingSelected must be defined
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {
+                    mGender = PetEntry.GENDER_UNKNOWN;
+                }
+            });
+        }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -138,14 +159,9 @@ public class EditorActivity extends AppCompatActivity {
         switch (item.getItemId()) {
             // Respond to a click on the "Save" menu option
             case R.id.action_save:
-                long id = insertPet();
-                String mToast;
-                if(id!=-1){
-                    mToast = "Pet Saved with Id: "+id;
-                } else{
-                    mToast = "Error with saving Pets";
-                }
-                Toast.makeText(this, mToast, Toast.LENGTH_SHORT).show();
+                // Save pet to database
+                insertPet();
+                // Exit activity
                 finish();
                 return true;
             // Respond to a click on the "Delete" menu option
